@@ -1,0 +1,193 @@
+// =====================================================================
+// PRISMA ORM SCHEMA: SMART KOPERASI
+// Digunakan jika backend Node.js / Express / Next.js / NestJS digunakan
+// =====================================================================
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  MEMBER
+  ADMIN
+  OFFICER
+}
+
+enum UserStatus {
+  PENDING_APPROVAL
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum CreditScoreTier {
+  PRIMA_A_PLUS
+  SANGAT_BAIK
+  STANDAR
+  BERISIKO
+}
+
+enum LoanStatus {
+  DRAFT
+  REVIEW_ANALIS
+  DISETUJUI
+  DITOLAK
+  LUNAS
+}
+
+enum InterestType {
+  FLAT
+  MENURUN
+}
+
+enum CashflowType {
+  MASUK
+  KELUAR
+}
+
+enum SavingsType {
+  POKOK
+  WAJIB
+  SUKARELA
+}
+
+model User {
+  id                    String            @id @default(uuid())
+  memberNumber          String            @unique
+  name                  String
+  nik                   String            @unique @db.Char(16)
+  email                 String            @unique
+  phone                 String
+  passwordHash          String
+  role                  UserRole          @default(MEMBER)
+  status                UserStatus        @default(PENDING_APPROVAL)
+  creditScore           CreditScoreTier   @default(STANDAR)
+  failedLoginAttempts   Int               @default(0)
+  lockedUntil           DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  savingsAccount        SavingsAccount?
+  loans                 Loan[]
+  cashflowJournals      CashflowJournal[]
+  shuDistributions      ShuMemberDistribution[]
+
+  @@index([email])
+  @@index([memberNumber])
+  @@index([nik])
+}
+
+model SavingsAccount {
+  id                    String                 @id @default(uuid())
+  userId                String                 @unique
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  balancePokok          Decimal                @default(0) @db.Decimal(15, 2)
+  balanceWajib          Decimal                @default(0) @db.Decimal(15, 2)
+  balanceSukarela       Decimal                @default(0) @db.Decimal(15, 2)
+  lastWajibPaymentDate  DateTime?
+  updatedAt             DateTime               @updatedAt
+
+  transactions          SavingsTransaction[]
+}
+
+model SavingsTransaction {
+  id                    String            @id @default(uuid())
+  accountId             String
+  account               SavingsAccount    @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  transactionNo         String            @unique
+  savingsType           SavingsType
+  flowType              CashflowType
+  amount                Decimal           @db.Decimal(15, 2)
+  balanceAfter          Decimal           @db.Decimal(15, 2)
+  description           String?
+  createdAt             DateTime          @default(now())
+
+  @@index([accountId])
+}
+
+model Loan {
+  id                    String            @id @default(uuid())
+  loanNumber            String            @unique
+  userId                String
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  plafonAmount          Decimal           @db.Decimal(15, 2)
+  tenorMonths           Int
+  interestRateAnnual    Decimal           @db.Decimal(5, 2)
+  interestType          InterestType      @default(FLAT)
+  monthlyInstallment    Decimal           @db.Decimal(15, 2)
+  remainingPrincipal    Decimal           @db.Decimal(15, 2)
+  purpose               String
+  status                LoanStatus        @default(REVIEW_ANALIS)
+  approvedBy            String?
+  approvedAt            DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  installments          LoanInstallment[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model LoanInstallment {
+  id                    String            @id @default(uuid())
+  loanId                String
+  loan                  Loan              @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  installmentNo         Int
+  dueDate               DateTime
+  principalAmount       Decimal           @db.Decimal(15, 2)
+  interestAmount        Decimal           @db.Decimal(15, 2)
+  totalAmount           Decimal           @db.Decimal(15, 2)
+  paidAmount            Decimal           @default(0) @db.Decimal(15, 2)
+  paidAt                DateTime?
+  status                String            @default("unpaid")
+
+  @@index([loanId])
+}
+
+model CashflowJournal {
+  id                    String            @id @default(uuid())
+  journalRef            String            @unique
+  userId                String
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  flowType              CashflowType
+  category              String
+  amount                Decimal           @db.Decimal(15, 2)
+  description           String?
+  createdAt             DateTime          @default(now())
+
+  @@index([userId])
+}
+
+model ShuPeriod {
+  id                    String                    @id @default(uuid())
+  fiscalYear            Int                       @unique
+  totalNetProfit        Decimal                   @db.Decimal(18, 2)
+  jasaModalPercentage   Decimal                   @default(40.0) @db.Decimal(5, 2)
+  jasaUsahaPercentage   Decimal                   @default(60.0) @db.Decimal(5, 2)
+  ratDate               DateTime
+  isDistributed         Boolean                   @default(false)
+  createdAt             DateTime                  @default(now())
+
+  distributions         ShuMemberDistribution[]
+}
+
+model ShuMemberDistribution {
+  id                    String            @id @default(uuid())
+  shuPeriodId           String
+  shuPeriod             ShuPeriod         @relation(fields: [shuPeriodId], references: [id], onDelete: Cascade)
+  userId                String
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  jasaModalEarned       Decimal           @db.Decimal(15, 2)
+  jasaUsahaEarned       Decimal           @db.Decimal(15, 2)
+  totalShuReceived      Decimal           @db.Decimal(15, 2)
+  distributedAt         DateTime?
+
+  @@index([userId])
+  @@index([shuPeriodId])
+}
