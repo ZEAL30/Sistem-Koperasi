@@ -15,22 +15,45 @@ app.use(express.json());
 // ─── Singleton Pool — penting untuk Vercel Serverless ───────────────────────
 // Di serverless, setiap cold-start membuat instance baru. Tanpa singleton,
 // setiap request membuka Pool baru → Supabase kehabisan koneksi (EMAXCONNSESSION).
-// Dengan menyimpan pool di global, instance yang sama di-reuse selama function
-// masih "warm" (tidak cold-start ulang).
 declare global {
   // eslint-disable-next-line no-var
   var __pgPool: Pool | undefined;
 }
 
+/**
+ * Otomatis perbaiki DATABASE_URL Supabase agar pakai Transaction Mode (port 6543).
+ * Session Mode (port 5432 di pooler) hanya support 15 koneksi — tidak cocok untuk serverless.
+ * Transaction Mode (port 6543) tidak punya batas koneksi per-session.
+ */
+function getFixedDatabaseUrl(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl);
+    // Deteksi Supabase pooler hostname
+    const isSupabasePooler = url.hostname.includes('.pooler.supabase.com');
+    if (isSupabasePooler) {
+      // Paksa Transaction Mode (port 6543)
+      url.port = '6543';
+      // Tambahkan parameter pgbouncer agar prepared statements dinonaktifkan
+      url.searchParams.set('pgbouncer', 'true');
+      // Batasi koneksi per instance serverless
+      url.searchParams.set('connection_limit', '1');
+      console.log('[DB] Auto-switched Supabase URL to Transaction Mode (port 6543)');
+    }
+    return url.toString();
+  } catch {
+    return rawUrl; // Kembalikan asli jika URL tidak valid
+  }
+}
+
 function createPool(): Pool {
   if (process.env.DATABASE_URL) {
+    const connectionString = getFixedDatabaseUrl(process.env.DATABASE_URL);
     return new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString,
       ssl: { rejectUnauthorized: false },
-      // max:1 = serverless-safe: 1 koneksi per instance, tidak melebihi quota Supabase
-      max: 1,
-      idleTimeoutMillis: 10000,   // tutup koneksi idle setelah 10 detik
-      connectionTimeoutMillis: 5000, // gagal jika tidak bisa connect dalam 5 detik
+      max: 1,                          // 1 koneksi per serverless instance
+      idleTimeoutMillis: 10000,        // tutup idle setelah 10 detik
+      connectionTimeoutMillis: 8000,   // timeout connect 8 detik
     });
   }
   return new Pool({
@@ -45,7 +68,7 @@ function createPool(): Pool {
   });
 }
 
-// Gunakan pool yang sudah ada jika masih warm, buat baru jika cold-start
+// Reuse pool yang sudah ada jika function masih warm
 const pool: Pool = globalThis.__pgPool ?? (globalThis.__pgPool = createPool());
 
 // Helper untuk mendapatkan user_id dari request query / header
