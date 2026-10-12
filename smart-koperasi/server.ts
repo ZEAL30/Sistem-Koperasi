@@ -42,6 +42,26 @@ function getRequestedUserId(req: express.Request): string | null {
   return (req.query.userId as string) || (req.headers['x-user-id'] as string) || null;
 }
 
+// Endpoint Diagnostik Koneksi Database Supabase
+app.get('/api/health', async (_req, res) => {
+  try {
+    const dbRes = await pool.query('SELECT NOW() as current_time, COUNT(*)::int as total_users FROM users');
+    res.json({
+      status: 'ok',
+      database: 'connected',
+      time: dbRes.rows[0].current_time,
+      total_users: dbRes.rows[0].total_users,
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      status: 'error',
+      database: 'disconnected',
+      message: err.message,
+      code: err.code,
+    });
+  }
+});
+
 // 1. Endpoint Login (Autentikasi langsung ke PostgreSQL 'zeal')
 app.post('/api/auth/login', async (req, res) => {
   const { identifier, password, role } = req.body;
@@ -87,7 +107,8 @@ app.post('/api/auth/login', async (req, res) => {
 
     res.json({ success: true, user });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error saat login:', err);
+    res.status(500).json({ error: `Database Error: ${err.message}` });
   }
 });
 
