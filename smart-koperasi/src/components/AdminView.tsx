@@ -20,10 +20,6 @@ import {
   Eye,
   UserPlus,
   Download,
-  Mail,
-  Phone,
-  Calendar,
-  Lock,
 } from 'lucide-react';
 import type { User, AdminMember, LoanItem, CashflowTransaction, GlobalReport, UserRole } from '../types';
 import { hasPermission } from '../types';
