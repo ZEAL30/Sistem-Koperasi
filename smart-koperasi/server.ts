@@ -27,15 +27,17 @@ const pool = process.env.DATABASE_URL
       ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
     });
 
-// Tes Koneksi Database
-pool.connect((err, client, release) => {
-  if (err) {
-    console.error('❌ Gagal terhubung ke database PostgreSQL "zeal":', err.message);
-  } else {
-    console.log('✅ Berhasil terhubung ke database PostgreSQL "zeal"!');
-    release();
-  }
-});
+// Tes Koneksi Database di local environment
+if (process.env.VERCEL !== '1') {
+  pool.connect((err, client, release) => {
+    if (err) {
+      console.error('❌ Gagal terhubung ke database PostgreSQL:', err.message);
+    } else {
+      console.log('✅ Berhasil terhubung ke database PostgreSQL!');
+      release();
+    }
+  });
+}
 
 // Helper untuk mendapatkan user_id dari request query / header
 function getRequestedUserId(req: express.Request): string | null {
