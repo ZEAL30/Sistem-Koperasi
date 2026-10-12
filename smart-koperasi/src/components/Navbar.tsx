@@ -17,7 +17,7 @@ import {
 import type { User } from '../types';
 import { hasPermission } from '../types';
 
-export type ActiveTab = 'overview' | 'savings' | 'loans' | 'cashflow' | 'shu' | 'admin';
+export type ActiveTab = 'overview' | 'savings' | 'loans' | 'cashflow' | 'shu' | 'admin' | 'settings';
 
 interface NavbarProps {
   user: User;
@@ -131,8 +131,23 @@ export const Navbar: React.FC<NavbarProps> = ({
           <span className="notification-dot" />
         </button>
 
-        {/* User Profile */}
-        <div className="user-profile">
+        {/* Settings Button */}
+        <button
+          onClick={() => handleSelectTab('settings')}
+          className={`settings-nav-btn ${activeTab === 'settings' ? 'active' : ''}`}
+          title="Pengaturan Akun & Profil"
+          aria-label="Pengaturan"
+        >
+          <Settings size={18} />
+        </button>
+
+        {/* User Profile (Clickable to Settings) */}
+        <div 
+          className={`user-profile ${activeTab === 'settings' ? 'user-profile-active' : ''}`}
+          onClick={() => handleSelectTab('settings')}
+          title="Buka Pengaturan Akun"
+          style={{ cursor: 'pointer' }}
+        >
           <img
             src={user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'}
             alt={user.name}

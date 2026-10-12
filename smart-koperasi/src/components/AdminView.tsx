@@ -20,10 +20,14 @@ import {
   Eye,
   UserPlus,
   Download,
+  Mail,
+  Phone,
+  Calendar,
+  Lock,
 } from 'lucide-react';
 import type { User, AdminMember, LoanItem, CashflowTransaction, GlobalReport, UserRole } from '../types';
 import { hasPermission } from '../types';
-import { Card, Badge, Button } from './ui';
+import { Card, Badge, Button, Modal } from './ui';
 import { apiService } from '../services/api';
 import { formatRupiah } from '../data/mockData';
 
@@ -61,6 +65,25 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUser }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [loanFilter, setLoanFilter] = useState<string>('all');
 
+  // Modal States untuk Tombol Aksi
+  const [selectedMember, setSelectedMember] = useState<AdminMember | null>(null);
+  const [isViewingMember, setIsViewingMember] = useState(false);
+  const [isEditingMember, setIsEditingMember] = useState(false);
+  const [editRole, setEditRole] = useState<UserRole>('member');
+  const [editStatus, setEditStatus] = useState<string>('active');
+  const [isUpdatingMember, setIsUpdatingMember] = useState(false);
+
+  // Modal Tambah Anggota Baru
+  const [isAddingMember, setIsAddingMember] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addNik, setAddNik] = useState('');
+  const [addEmail, setAddEmail] = useState('');
+  const [addPhone, setAddPhone] = useState('');
+  const [addRole, setAddRole] = useState<UserRole>('member');
+  const [addPassword, setAddPassword] = useState('Koperasi123!');
+  const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
+  const [addError, setAddError] = useState('');
+
   const canApproveLoans = hasPermission(currentUser.role, 'action:approve_loan');
   const canManageMembers = hasPermission(currentUser.role, 'action:manage_members');
   const canManageShu = hasPermission(currentUser.role, 'action:manage_shu');
@@ -90,9 +113,133 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUser }) => {
       await apiService.updateLoanStatus(loanId, action === 'approve' ? 'disetujui' : 'ditolak');
       const updated = await apiService.getAllLoans();
       setAllLoans(updated);
+      alert(`Pinjaman berhasil di-${action === 'approve' ? 'setujui' : 'tolak'}.`);
     } catch (err: any) {
       alert(`Gagal memperbarui status pinjaman: ${err.message}`);
     }
+  };
+
+  // Handler Buka Detail Anggota
+  const handleOpenViewMember = (member: AdminMember) => {
+    setSelectedMember(member);
+    setIsViewingMember(true);
+  };
+
+  // Handler Buka Edit Anggota
+  const handleOpenEditMember = (member: AdminMember) => {
+    setSelectedMember(member);
+    setEditRole(member.role);
+    setEditStatus(member.membershipStatus);
+    setIsEditingMember(true);
+  };
+
+  // Handler Simpan Edit Anggota
+  const handleSaveEditMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMember) return;
+    setIsUpdatingMember(true);
+    try {
+      await apiService.updateMemberStatus(selectedMember.id, {
+        status: editStatus,
+        role: editRole
+      });
+      alert(`Status dan Role untuk ${selectedMember.name} berhasil diperbarui!`);
+      setIsEditingMember(false);
+      loadData();
+    } catch (err: any) {
+      alert(`Gagal memperbarui anggota: ${err.message}`);
+    } finally {
+      setIsUpdatingMember(false);
+    }
+  };
+
+  // Handler Tambah Anggota Baru
+  const handleSaveNewMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (addNik.length !== 16 || !/^\d+$/.test(addNik)) {
+      setAddError('NIK wajib tepat 16 digit angka.');
+      return;
+    }
+    setAddError('');
+    setIsSubmittingAdd(true);
+    try {
+      const res = await apiService.register({
+        name: addName.trim(),
+        nik: addNik.trim(),
+        email: addEmail.trim(),
+        phone: addPhone.trim(),
+        role: addRole,
+        password: addPassword
+      });
+      if (res.success) {
+        alert(`Anggota baru berhasil ditambahkan dengan nomor: ${res.user.memberNumber}`);
+        setIsAddingMember(false);
+        setAddName('');
+        setAddNik('');
+        setAddEmail('');
+        setAddPhone('');
+        loadData();
+      }
+    } catch (err: any) {
+      setAddError(err.message || 'Gagal menambahkan anggota.');
+    } finally {
+      setIsSubmittingAdd(false);
+    }
+  };
+
+  // Handler Ekspor CSV
+  const handleExportMembersCsv = () => {
+    if (members.length === 0) {
+      alert('Tidak ada data anggota untuk diekspor.');
+      return;
+    }
+    const headers = ['ID', 'Nama', 'No Anggota', 'Email', 'Role', 'Status', 'Skor Kredit', 'Total Simpanan', 'Pinjaman Aktif', 'Tgl Bergabung'];
+    const rows = members.map(m => [
+      m.id,
+      `"${m.name.replace(/"/g, '""')}"`,
+      m.memberNumber,
+      m.email,
+      m.role,
+      m.membershipStatus,
+      m.creditScore,
+      m.totalSavings,
+      m.activeLoans,
+      m.joinDate
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `Anggota_Smart_Koperasi_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportCashflowCsv = () => {
+    if (allCashflow.length === 0) {
+      alert('Tidak ada data mutasi kas untuk diekspor.');
+      return;
+    }
+    const headers = ['Tanggal', 'Anggota', 'Tipe', 'Kategori', 'Jumlah', 'No Referensi', 'Keterangan', 'Status'];
+    const rows = allCashflow.map(c => [
+      `"${c.date}"`,
+      `"${(c.memberName || '').replace(/"/g, '""')}"`,
+      c.type,
+      `"${c.category}"`,
+      c.amount,
+      c.referenceNo,
+      `"${(c.description || '').replace(/"/g, '""')}"`,
+      c.status
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `Buku_Kas_Global_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const filteredMembers = members.filter(m =>
@@ -147,7 +294,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUser }) => {
                 size="md"
                 icon={<UserPlus size={15} />}
                 style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff', borderColor: 'rgba(255,255,255,0.3)' }}
-                onClick={() => alert('Fitur tambah anggota tersedia di modul registrasi')}
+                onClick={() => setIsAddingMember(true)}
               >
                 Tambah Anggota
               </Button>
@@ -213,7 +360,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUser }) => {
                 <UserCheck size={14} /> {members.filter(m => m.membershipStatus === 'active' || m.membershipStatus === 'Aktif').length} Aktif
               </div>
               <div className="admin-stat-chip admin-stat-chip-amber">
-                <Clock size={14} /> {members.filter(m => m.membershipStatus === 'pending').length} Pending
+                <Clock size={14} /> {members.filter(m => m.membershipStatus === 'pending' || m.membershipStatus === 'pending_approval').length} Pending
               </div>
               <div className="admin-stat-chip admin-stat-chip-blue">
                 <Users size={14} /> {members.length} Total
@@ -227,7 +374,14 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUser }) => {
                 <h3 className="card-header-title">Daftar Anggota Koperasi</h3>
                 <div className="card-header-sub">Semua data anggota terdaftar di sistem</div>
               </div>
-              <Button variant="outline" size="sm" icon={<Download size={14} />}>Ekspor CSV</Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                icon={<Download size={14} />}
+                onClick={handleExportMembersCsv}
+              >
+                Ekspor CSV
+              </Button>
             </div>
             <div className="admin-table-wrapper">
               <table className="admin-table">
@@ -286,8 +440,20 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUser }) => {
                       {canManageMembers && (
                         <td>
                           <div style={{ display: 'flex', gap: '6px' }}>
-                            <button className="action-btn action-btn-view" title="Lihat Detail"><Eye size={13} /></button>
-                            <button className="action-btn action-btn-edit" title="Edit Anggota"><FileText size={13} /></button>
+                            <button 
+                              className="action-btn action-btn-view" 
+                              title="Lihat Detail"
+                              onClick={() => handleOpenViewMember(m)}
+                            >
+                              <Eye size={13} />
+                            </button>
+                            <button 
+                              className="action-btn action-btn-edit" 
+                              title="Edit Status / Role"
+                              onClick={() => handleOpenEditMember(m)}
+                            >
+                              <FileText size={13} />
+                            </button>
                           </div>
                         </td>
                       )}
@@ -399,7 +565,14 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUser }) => {
               <h3 className="card-header-title">Buku Kas Global Koperasi</h3>
               <div className="card-header-sub">Seluruh mutasi kas dari semua anggota</div>
             </div>
-            <Button variant="outline" size="sm" icon={<Download size={14} />}>Ekspor Jurnal</Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              icon={<Download size={14} />}
+              onClick={handleExportCashflowCsv}
+            >
+              Ekspor Jurnal
+            </Button>
           </div>
           <div className="admin-table-wrapper">
             <table className="admin-table">
@@ -525,6 +698,291 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUser }) => {
           )}
         </div>
       )}
+      {/* MODAL 1: LIHAT DETAIL ANGGOTA */}
+      {isViewingMember && selectedMember && (
+        <Modal onClose={() => setIsViewingMember(false)} size="md">
+          <div style={{ paddingRight: '20px', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+              <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'var(--primary-gradient)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: 800 }}>
+                {selectedMember.name.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <h3 className="modal-title" style={{ textAlign: 'left', margin: 0, fontSize: '18px' }}>
+                  {selectedMember.name}
+                </h3>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                  {selectedMember.memberNumber}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={{ padding: '10px', background: 'var(--bg-subtle)', borderRadius: '8px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Email Terdaftar</span>
+                <strong style={{ color: 'var(--text-main)', wordBreak: 'break-all' }}>{selectedMember.email}</strong>
+              </div>
+              <div style={{ padding: '10px', background: 'var(--bg-subtle)', borderRadius: '8px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>No. Handphone</span>
+                <strong style={{ color: 'var(--text-main)' }}>{selectedMember.phone || '-'}</strong>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={{ padding: '10px', background: 'var(--bg-subtle)', borderRadius: '8px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Hak Akses</span>
+                <Badge variant={getRoleBadgeVariant(selectedMember.role)}>{getRoleLabel(selectedMember.role)}</Badge>
+              </div>
+              <div style={{ padding: '10px', background: 'var(--bg-subtle)', borderRadius: '8px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Status Keanggotaan</span>
+                <Badge variant={getStatusBadgeVariant(selectedMember.membershipStatus)}>
+                  {selectedMember.membershipStatus === 'active' ? 'Aktif' : selectedMember.membershipStatus}
+                </Badge>
+              </div>
+            </div>
+
+            <div style={{ padding: '12px', background: 'var(--primary-surface)', borderRadius: '8px', border: '1px solid rgba(15,90,71,0.15)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Total Akumulasi Simpanan:</span>
+                <strong style={{ color: 'var(--primary)', fontSize: '15px' }}>{formatRupiah(selectedMember.totalSavings || 0)}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Pinjaman Aktif Berjalan:</span>
+                <strong style={{ color: 'var(--text-main)' }}>{selectedMember.activeLoans} Pinjaman</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Skor Kredit:</span>
+                <span style={{ fontWeight: 700, color: 'var(--text-main)' }}>
+                  {String(selectedMember.creditScore).replace(/_/g, ' ').replace('prima a plus', 'Prima A+')}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+            <Button variant="outline" onClick={() => setIsViewingMember(false)}>
+              Tutup
+            </Button>
+          </div>
+        </Modal>
+      )}
+
+      {/* MODAL 2: EDIT ANGGOTA (STATUS & ROLE) */}
+      {isEditingMember && selectedMember && (
+        <Modal onClose={() => !isUpdatingMember && setIsEditingMember(false)} size="sm">
+          <div style={{ paddingRight: '20px', marginBottom: '16px' }}>
+            <h3 className="modal-title" style={{ textAlign: 'left', margin: '0 0 4px', fontSize: '18px' }}>
+              Edit Status & Role Anggota
+            </h3>
+            <p className="modal-desc" style={{ textAlign: 'left', margin: 0 }}>
+              Perbarui status operasional atau tingkat otoritas untuk <strong>{selectedMember.name}</strong>.
+            </p>
+          </div>
+
+          <form onSubmit={handleSaveEditMember} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                Peran Akses (Role)
+              </label>
+              <select
+                value={editRole}
+                onChange={(e) => setEditRole(e.target.value as UserRole)}
+                className="modern-input"
+                style={{ height: '42px', padding: '0 12px' }}
+              >
+                <option value="member">Anggota (Member Biasa)</option>
+                <option value="pengurus">Pengurus Koperasi</option>
+                <option value="admin">Administrator Sistem</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                Status Keanggotaan
+              </label>
+              <select
+                value={editStatus}
+                onChange={(e) => setEditStatus(e.target.value)}
+                className="modern-input"
+                style={{ height: '42px', padding: '0 12px' }}
+              >
+                <option value="active">Aktif (Bisa Transaksi)</option>
+                <option value="pending_approval">Menunggu Persetujuan</option>
+                <option value="inactive">Nonaktif</option>
+                <option value="suspended">Dibekukan (Suspended)</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isUpdatingMember}
+                onClick={() => setIsEditingMember(false)}
+                style={{ flex: 1 }}
+              >
+                Batal
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={isUpdatingMember}
+                style={{ flex: 1 }}
+              >
+                {isUpdatingMember ? 'Menyimpan...' : 'Simpan Perubahan'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* MODAL 3: TAMBAH ANGGOTA BARU */}
+      {isAddingMember && (
+        <Modal onClose={() => !isSubmittingAdd && setIsAddingMember(false)} size="md">
+          <div style={{ paddingRight: '20px', marginBottom: '16px' }}>
+            <h3 className="modal-title" style={{ textAlign: 'left', margin: '0 0 4px', fontSize: '18px' }}>
+              Tambah Anggota Koperasi Baru
+            </h3>
+            <p className="modal-desc" style={{ textAlign: 'left', margin: 0 }}>
+              Daftarkan anggota secara langsung dari sistem administrasi.
+            </p>
+          </div>
+
+          {addError && (
+            <div style={{
+              padding: '10px 14px',
+              borderRadius: '8px',
+              marginBottom: '14px',
+              fontSize: '13px',
+              background: 'var(--danger-bg)',
+              color: 'var(--danger)',
+              border: '1px solid var(--danger-border)'
+            }}>
+              {addError}
+            </div>
+          )}
+
+          <form onSubmit={handleSaveNewMember} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                Nama Lengkap Sesuai KTP <span style={{ color: 'var(--danger)' }}>*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                placeholder="Contoh: Ahmad Hidayat"
+                className="modern-input"
+                style={{ height: '42px', padding: '0 12px' }}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                  NIK (16 Digit) <span style={{ color: 'var(--danger)' }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  maxLength={16}
+                  required
+                  value={addNik}
+                  onChange={(e) => setAddNik(e.target.value.replace(/\D/g, ''))}
+                  placeholder="3201..."
+                  className="modern-input"
+                  style={{ height: '42px', padding: '0 12px' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                  No. Handphone / WhatsApp <span style={{ color: 'var(--danger)' }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={addPhone}
+                  onChange={(e) => setAddPhone(e.target.value)}
+                  placeholder="0812..."
+                  className="modern-input"
+                  style={{ height: '42px', padding: '0 12px' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                  Email Anggota <span style={{ color: 'var(--danger)' }}>*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={addEmail}
+                  onChange={(e) => setAddEmail(e.target.value)}
+                  placeholder="ahmad@email.com"
+                  className="modern-input"
+                  style={{ height: '42px', padding: '0 12px' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                  Peran Akses (Role)
+                </label>
+                <select
+                  value={addRole}
+                  onChange={(e) => setAddRole(e.target.value as UserRole)}
+                  className="modern-input"
+                  style={{ height: '42px', padding: '0 12px' }}
+                >
+                  <option value="member">Anggota</option>
+                  <option value="pengurus">Pengurus</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                Kata Sandi Awal Akun
+              </label>
+              <input
+                type="text"
+                required
+                value={addPassword}
+                onChange={(e) => setAddPassword(e.target.value)}
+                placeholder="Kata sandi default"
+                className="modern-input"
+                style={{ height: '42px', padding: '0 12px' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmittingAdd}
+                onClick={() => setIsAddingMember(false)}
+                style={{ flex: 1 }}
+              >
+                Batal
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={isSubmittingAdd}
+                style={{ flex: 1 }}
+              >
+                {isSubmittingAdd ? 'Mendaftarkan...' : 'Daftarkan Anggota'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
     </div>
   );
 };

@@ -139,5 +139,29 @@ export const apiService = {
       body: JSON.stringify({ status }),
     });
   },
+
+  // 14b. [ADMIN/PENGURUS] Update status keanggotaan dan peran (role) anggota
+  updateMemberStatus(memberId: string, data: { status?: string; role?: string }) {
+    return request<{ success: boolean; message: string }>(`/admin/members/${memberId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // 15. Update Profil (Nama, Telepon, Avatar)
+  updateProfile(data: { userId: string; name: string; phone: string; avatar?: string }): Promise<{ success: boolean; message: string; user: User }> {
+    return request<{ success: boolean; message: string; user: User }>('/user/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // 16. Ganti Kata Sandi
+  changePassword(data: { userId: string; oldPassword: string; newPassword: string }): Promise<{ success: boolean; message: string }> {
+    return request<{ success: boolean; message: string }>('/user/password', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
 };
 

@@ -334,6 +334,27 @@ input, select, textarea, button { font-family: inherit; }
   color: var(--text-main);
 }
 
+.settings-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--duration-fast) ease;
+}
+
+.settings-nav-btn:hover,
+.settings-nav-btn.active {
+  background: var(--bg-subtle);
+  color: var(--primary-light);
+  border-color: var(--primary);
+}
+
 .notification-dot {
   position: absolute;
   top: 5px;
@@ -360,8 +381,19 @@ input, select, textarea, button { font-family: inherit; }
   gap: 10px;
   padding: 4px 8px;
   border-radius: var(--radius-md);
-  transition: background var(--duration-fast) ease;
+  transition: all var(--duration-fast) ease;
   cursor: default;
+}
+
+.user-profile:hover,
+.user-profile-active {
+  background: var(--bg-subtle);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.user-profile-active .user-avatar {
+  border-color: var(--primary);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.35);
 }
 
 .user-profile:hover { background: var(--bg-subtle); }

@@ -7,6 +7,7 @@ import { LoansView } from './components/LoansView';
 import { CashflowView } from './components/CashflowView';
 import { ShuView } from './components/ShuView';
 import { AdminView } from './components/AdminView';
+import { SettingsView } from './components/SettingsView';
 import { 
   initialSavings, 
   initialLoans, 
@@ -20,11 +21,35 @@ import { apiService } from './services/api';
 import { Modal, Button, LoadingSpinner } from './components/ui';
 
 export function App() {
-  // Session & Auth state: Mulai dengan null (harus login terlebih dahulu)
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  // Session & Auth state: Ambil sesi tersimpan dari localStorage agar tidak kembali ke login saat reload
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    try {
+      const savedUser = localStorage.getItem('smart_koperasi_user');
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch {
+      return null;
+    }
+  });
   const [showLogoutModal, setShowLogoutModal] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    try {
+      const savedTab = localStorage.getItem('smart_koperasi_tab') as ActiveTab | null;
+      if (savedTab) return savedTab;
+      const savedUser = localStorage.getItem('smart_koperasi_user');
+      if (savedUser) {
+        const user = JSON.parse(savedUser);
+        return hasPermission(user.role, 'view:admin_members') ? 'admin' : 'overview';
+      }
+    } catch {}
+    return 'overview';
+  });
   const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // Simpan perubahan tab ke localStorage
+  const handleTabChange = (tab: ActiveTab) => {
+    setActiveTab(tab);
+    localStorage.setItem('smart_koperasi_tab', tab);
+  };
 
   // Business entities state (Terhubung langsung dan dimuat dari database PostgreSQL zeal)
   const [savings, setSavings] = useState<SavingsSummary>(initialSavings);
@@ -60,15 +85,16 @@ export function App() {
   // Auth Handlers
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
+    localStorage.setItem('smart_koperasi_user', JSON.stringify(user));
     // Admin/Pengurus langsung ke panel admin, member ke overview
-    if (hasPermission(user.role, 'view:admin_members')) {
-      setActiveTab('admin');
-    } else {
-      setActiveTab('overview');
-    }
+    const defaultTab: ActiveTab = hasPermission(user.role, 'view:admin_members') ? 'admin' : 'overview';
+    setActiveTab(defaultTab);
+    localStorage.setItem('smart_koperasi_tab', defaultTab);
   };
 
   const handleConfirmLogout = () => {
+    localStorage.removeItem('smart_koperasi_user');
+    localStorage.removeItem('smart_koperasi_tab');
     setCurrentUser(null);
     setShowLogoutModal(false);
     // Reset data saat logout
@@ -140,7 +166,7 @@ export function App() {
       <Navbar
         user={currentUser}
         activeTab={activeTab}
-        onTabChange={(tab) => setActiveTab(tab)}
+        onTabChange={handleTabChange}
         onRequestLogout={() => setShowLogoutModal(true)}
       />
 
@@ -156,7 +182,7 @@ export function App() {
                 loans={loans}
                 shu={shu}
                 cashflow={cashflow}
-                onNavigateTab={(tab) => setActiveTab(tab)}
+                onNavigateTab={handleTabChange}
               />
             )}
 
@@ -188,6 +214,17 @@ export function App() {
             {/* Admin Panel — hanya tersedia untuk admin & pengurus */}
             {activeTab === 'admin' && hasPermission(currentUser.role, 'view:admin_members') && (
               <AdminView currentUser={currentUser} />
+            )}
+
+            {/* Menu Pengaturan Akun & Profil */}
+            {activeTab === 'settings' && (
+              <SettingsView 
+                user={currentUser} 
+                onUpdateUser={(updated) => {
+                  setCurrentUser(updated);
+                  localStorage.setItem('smart_koperasi_user', JSON.stringify(updated));
+                }} 
+              />
             )}
 
             {/* Fallback: akses tidak diizinkan */}

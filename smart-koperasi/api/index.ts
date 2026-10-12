@@ -597,4 +597,108 @@ app.patch('/api/admin/loans/:id/status', async (req, res) => {
   }
 });
 
+// 14b. [ADMIN/PENGURUS] Update status keanggotaan & role anggota
+app.patch('/api/admin/members/:id/status', async (req, res) => {
+  const { id } = req.params;
+  const { status, role } = req.body;
+  try {
+    const fields: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    if (status) {
+      fields.push(`status = $${idx++}`);
+      values.push(status);
+    }
+    if (role) {
+      fields.push(`role = $${idx++}`);
+      values.push(role);
+    }
+
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'Tidak ada data status/role yang diperbarui.' });
+    }
+
+    fields.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+
+    await pool.query(
+      `UPDATE users SET ${fields.join(', ')} WHERE id = $${idx}`,
+      values
+    );
+
+    res.json({ success: true, message: 'Data anggota berhasil diperbarui.' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 15. Update Profil Pengguna (Nama, No HP, Avatar)
+app.put('/api/user/profile', async (req, res) => {
+  const { userId, name, phone, avatar } = req.body;
+  if (!userId) {
+    return res.status(400).json({ error: 'User ID wajib disertakan.' });
+  }
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'Nama lengkap tidak boleh kosong.' });
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE users 
+       SET name = $1, phone = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3
+       RETURNING id, member_number as "memberNumber", name, nik, email, phone, role, status as "membershipStatus", 
+                 to_char(created_at, 'DD Mon YYYY') as "joinDate", credit_score as "creditScore"`,
+      [name.trim(), phone ? phone.trim() : '', userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Pengguna tidak ditemukan.' });
+    }
+
+    const updatedUser = {
+      ...result.rows[0],
+      avatar: avatar || undefined
+    };
+
+    res.json({ success: true, message: 'Profil berhasil diperbarui.', user: updatedUser });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 16. Ganti Kata Sandi dari Menu Pengaturan
+app.put('/api/user/password', async (req, res) => {
+  const { userId, oldPassword, newPassword } = req.body;
+  if (!userId || !oldPassword || !newPassword) {
+    return res.status(400).json({ error: 'User ID, kata sandi lama, dan kata sandi baru wajib diisi.' });
+  }
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: 'Kata sandi baru minimal 8 karakter.' });
+  }
+
+  try {
+    const userRes = await pool.query('SELECT password_hash FROM users WHERE id = $1', [userId]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Pengguna tidak ditemukan.' });
+    }
+
+    const currentHash = userRes.rows[0].password_hash;
+    const isMatch = await bcrypt.compare(oldPassword, currentHash);
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Kata sandi saat ini (lama) tidak sesuai.' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const newHash = await bcrypt.hash(newPassword, salt);
+
+    await pool.query('UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [newHash, userId]);
+
+    res.json({ success: true, message: 'Kata sandi berhasil diperbarui.' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default app;
