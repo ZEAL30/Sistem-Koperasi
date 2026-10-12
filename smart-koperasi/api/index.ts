@@ -12,20 +12,41 @@ const port = process.env.PORT || 5001;
 app.use(cors());
 app.use(express.json());
 
-// Konfigurasi Pool PostgreSQL ke database Supabase / Neon / Local
-const pool = process.env.DATABASE_URL
-  ? new Pool({
+// ─── Singleton Pool — penting untuk Vercel Serverless ───────────────────────
+// Di serverless, setiap cold-start membuat instance baru. Tanpa singleton,
+// setiap request membuka Pool baru → Supabase kehabisan koneksi (EMAXCONNSESSION).
+// Dengan menyimpan pool di global, instance yang sama di-reuse selama function
+// masih "warm" (tidak cold-start ulang).
+declare global {
+  // eslint-disable-next-line no-var
+  var __pgPool: Pool | undefined;
+}
+
+function createPool(): Pool {
+  if (process.env.DATABASE_URL) {
+    return new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
-    })
-  : new Pool({
-      host: process.env.DB_HOST || 'localhost',
-      port: Number(process.env.DB_PORT) || 5432,
-      user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || 'root',
-      database: process.env.DB_NAME || 'zeal',
-      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+      ssl: { rejectUnauthorized: false },
+      // max:1 = serverless-safe: 1 koneksi per instance, tidak melebihi quota Supabase
+      max: 1,
+      idleTimeoutMillis: 10000,   // tutup koneksi idle setelah 10 detik
+      connectionTimeoutMillis: 5000, // gagal jika tidak bisa connect dalam 5 detik
     });
+  }
+  return new Pool({
+    host: process.env.DB_HOST || 'localhost',
+    port: Number(process.env.DB_PORT) || 5432,
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'root',
+    database: process.env.DB_NAME || 'zeal',
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    max: 5,
+    idleTimeoutMillis: 10000,
+  });
+}
+
+// Gunakan pool yang sudah ada jika masih warm, buat baru jika cold-start
+const pool: Pool = globalThis.__pgPool ?? (globalThis.__pgPool = createPool());
 
 // Helper untuk mendapatkan user_id dari request query / header
 function getRequestedUserId(req: express.Request): string | null {
