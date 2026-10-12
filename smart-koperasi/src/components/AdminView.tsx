@@ -106,7 +106,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUser }) => {
   );
 
   const pendingLoans = allLoans.filter(l =>
-    l.status === 'Verifikasi Analis' || l.status === 'review_analis'
+    (l.status as string) === 'Verifikasi Analis' || (l.status as string) === 'review_analis'
   );
 
   return (

@@ -12,14 +12,20 @@ const port = process.env.PORT || 5001;
 app.use(cors());
 app.use(express.json());
 
-// Konfigurasi Pool PostgreSQL ke database 'zeal'
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: Number(process.env.DB_PORT) || 5432,
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'root',
-  database: process.env.DB_NAME || 'zeal',
-});
+// Konfigurasi Pool PostgreSQL ke database
+const pool = process.env.DATABASE_URL
+  ? new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
+    })
+  : new Pool({
+      host: process.env.DB_HOST || 'localhost',
+      port: Number(process.env.DB_PORT) || 5432,
+      user: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD || 'root',
+      database: process.env.DB_NAME || 'zeal',
+      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    });
 
 // Tes Koneksi Database
 pool.connect((err, client, release) => {
@@ -592,7 +598,12 @@ app.patch('/api/admin/loans/:id/status', async (req, res) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`🚀 Server Backend Smart Koperasi aktif di http://localhost:${port}`);
-});
+// Jalankan server jika dijalankan langsung (bukan sebagai serverless function di Vercel)
+if (process.env.VERCEL !== '1' && process.env.NODE_ENV !== 'test') {
+  app.listen(port, () => {
+    console.log(`🚀 Server Backend Smart Koperasi aktif di http://localhost:${port}`);
+  });
+}
+
+export default app;
 

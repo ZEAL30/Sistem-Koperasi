@@ -13,7 +13,6 @@ import {
   Clock, 
   RefreshCw,
   User,
-  Phone,
   CreditCard,
   Headphones,
   Award,
@@ -1177,7 +1176,7 @@ export const AuthView: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                       {otpCodes.map((digit, idx) => (
                         <input
                           key={idx}
-                          ref={(el) => (otpInputRefs.current[idx] = el)}
+                          ref={(el) => { otpInputRefs.current[idx] = el; }}
                           type="text"
                           inputMode="numeric"
                           maxLength={1}
